@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\FediFile.WinFsp\FediFile.WinFsp.csproj" />
+    <ProjectReference Include="..\FediFile.Shell\FediFile.Shell.csproj" />
+    <ProjectReference Include="..\FediFile.Store\FediFile.Store.csproj" />
+    <ProjectReference Include="..\FediFile.ActivityPub\FediFile.ActivityPub.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="FediFile.ActivityPub/FediFile.ActivityPub.csproj" />
+  <Project Path="FediFile.Host/FediFile.Host.csproj" />
+  <Project Path="FediFile.Shell/FediFile.Shell.csproj" />
+  <Project Path="FediFile.Store/FediFile.Store.csproj" />
+  <Project Path="FediFile.WinFsp/FediFile.WinFsp.csproj" />
+</Solution>

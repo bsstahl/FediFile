@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\src\FediFile.Store\FediFile.Store.csproj" />
+    <ProjectReference Include="..\src\FediFile.ActivityPub\FediFile.ActivityPub.csproj" />
+  </ItemGroup>
+
+</Project>

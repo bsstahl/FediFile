@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\src\FediFile.ActivityPub\FediFile.ActivityPub.csproj" />
+    <ProjectReference Include="..\FediFile.ActivityPub\FediFile.ActivityPub.csproj" />
   </ItemGroup>
 
 </Project>

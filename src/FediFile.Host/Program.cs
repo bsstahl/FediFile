@@ -1,11 +1,25 @@
 using FediFile.ActivityPub;
+using FediFile.Host;
 using FediFile.Store;
 using FediFile.WinFsp;
+using Microsoft.Extensions.Logging;
 
-var mountPoint = args.Length > 0 ? args[0] : "F:";
-var actorHandle = args.Length > 1 ? args[1] : "@demo@example.social";
+var command = args.Length > 0 ? args[0].ToUpperInvariant() : "MOUNT";
+var actorHandle = command is "LIST" or "CAT"
+    ? args.ElementAtOrDefault(1) ?? throw new ArgumentException("An actor handle is required.")
+    : args.ElementAtOrDefault(1) ?? "@demo@example.social";
 
-using var httpClient = new HttpClient
+using var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder.SetMinimumLevel(LogLevel.Information).AddSimpleConsole();
+});
+using var httpTransport = new HttpClientHandler();
+using var loggingHandler = new HttpTrafficLoggingHandler(
+    loggerFactory.CreateLogger<HttpTrafficLoggingHandler>())
+{
+    InnerHandler = httpTransport
+};
+using var httpClient = new HttpClient(loggingHandler)
 {
     Timeout = TimeSpan.FromSeconds(30)
 };
@@ -25,9 +39,33 @@ var fileSystem = new FediFileSystem(
 
 var adapter = new WinFspAdapter(fileSystem);
 
+if (command is "LIST" or "CAT")
+{
+    var path = args.ElementAtOrDefault(2) ?? HostPath.GetDefaultNotesPath(actorHandle);
+
+    if (command == "LIST")
+    {
+        var entries = await fileSystem.ReadDirectoryAsync(path, CancellationToken.None).ConfigureAwait(false);
+        foreach (var entry in entries)
+        {
+#pragma warning disable CA1303
+            Console.WriteLine(entry.IsDirectory ? $"<DIR> {entry.Name}" : entry.Name);
+#pragma warning restore CA1303
+        }
+    }
+    else
+    {
+        using var content = await fileSystem.OpenReadAsync(path, CancellationToken.None).ConfigureAwait(false);
+        using var output = Console.OpenStandardOutput();
+        await content.CopyToAsync(output, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    return;
+}
+
 #pragma warning disable CA1303
 Console.WriteLine(HostMessages.StarterHostInitialized);
-Console.WriteLine($"Requested mount point: {mountPoint}");
+Console.WriteLine($"Requested command: {command}");
 Console.WriteLine($"Seed actor: {actorHandle}");
 Console.WriteLine(HostMessages.WinFspNextStep);
 #pragma warning restore CA1303

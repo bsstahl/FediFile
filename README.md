@@ -5,7 +5,7 @@ FediFile is a starter design for a Windows virtual filesystem that mounts Fedive
 ## What is in this repository
 
 1. A full technical specification in `docs\technical-specification.md`
-2. A .NET 8 solution scaffold for ActivityPub, store, filesystem, shell, and host layers
+2. A .NET 10 solution scaffold for ActivityPub, store, filesystem, shell, and host layers
 3. Example interfaces and starter implementations for the key integration points
 
 ## Projects
@@ -27,8 +27,11 @@ dotnet build .\FediFile.slnx
 ## Run
 
 ```powershell
-dotnet run --project .\FediFile.Host -- F: @barry@mastodon.social
+dotnet run --project .\src\FediFile.Host -- list @barry@mastodon.social
+dotnet run --project .\src\FediFile.Host -- cat @barry@mastodon.social "\@barry@mastodon.social\Notes\note.html"
 ```
+
+The `list` command synchronizes an actor and lists its cached Notes directory. The `cat` command synchronizes an actor and writes a note's HTML content to standard output.
 
 ## Status
 

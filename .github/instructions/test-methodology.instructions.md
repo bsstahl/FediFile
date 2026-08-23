@@ -17,6 +17,8 @@ Follow the red, green, refactor cycle:
 4. Refactor the code and the test while keeping all tests green.
 5. Repeat for the next behavior.
 
+Do not implement a new production path first and add tests afterward. If a behavior is not practical to test at its current boundary, change the boundary or explicitly document the reason before implementation.
+
 Keep the cycle short. If a change grows too large, split it into smaller behaviors and test each one independently.
 
 ## What To Test First
@@ -71,6 +73,18 @@ After the red phase, notify the user to validate the failing test outcome before
 
 Check in work as each phase completes, but do not push to remote until the full TDD cycle is complete and the relevant tests are green.
 
+### Coverage Gate
+
+Run code coverage before declaring a behavior complete. The coverage run must include every production file changed in the work, not only the test project or the main class under discussion.
+
+Review uncovered lines and branches in each changed production file:
+
+* If uncovered code represents new or changed behavior, add a focused test before completing the work.
+* If uncovered code is pre-existing and unrelated, leave it unchanged and record it as an explicit residual gap.
+* If coverage cannot observe the behavior, test at the nearest public boundary or document why the behavior is intentionally excluded.
+
+A passing test run without a coverage review is not sufficient validation for a behavior change.
+
 ## Test Quality
 
 Write tests that are:
@@ -118,9 +132,10 @@ If a change is significant enough to affect behavior, it should usually start wi
 ## Practical Rules
 
 * Do not add production code without a failing test unless you are doing a pure refactor or a non-behavioral file change
+* Do not add a new production file, public method, command handler, or branch without a corresponding behavior test
 * Keep tests close to the behavior they protect
 * Prefer the smallest useful scope for each test
-* Re-run the relevant test suite before moving to the next change
+* Re-run the relevant test suite and coverage after each meaningful behavior change
 
 ## Related Guidance
 

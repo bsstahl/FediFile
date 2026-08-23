@@ -8,3 +8,5 @@ All instructions per below are to be followed whenever taking action in this rep
 
 * All code will be written using the [TDD Methodology](../.github/instructions/test-methodology.instructions.md).
 
+* Every new or changed production behavior must have a focused automated test and a coverage run that includes every changed production file before the work is considered complete.
+

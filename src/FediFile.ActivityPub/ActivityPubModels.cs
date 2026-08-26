@@ -207,7 +207,17 @@ public sealed class ActivityPubClient : IActivityPubClient
 
         using var request = new HttpRequestMessage(HttpMethod.Get, collectionUri);
         using var document = await SendForJsonAsync(request, cancellationToken).ConfigureAwait(false);
-        return ParseCollection(document);
+        var collection = ParseCollection(document);
+        if (collection.OrderedItems.Count > 0
+            || !document.RootElement.TryGetProperty("first", out var firstValue)
+            || !Uri.TryCreate(firstValue.GetString(), UriKind.Absolute, out var firstPageUri))
+        {
+            return collection;
+        }
+
+        using var firstPageRequest = new HttpRequestMessage(HttpMethod.Get, firstPageUri);
+        using var firstPageDocument = await SendForJsonAsync(firstPageRequest, cancellationToken).ConfigureAwait(false);
+        return ParseCollection(firstPageDocument);
     }
 
     public async ValueTask<ActivityPubNote> GetNoteAsync(string objectId, CancellationToken cancellationToken)
@@ -306,6 +316,13 @@ public sealed class ActivityPubClient : IActivityPubClient
                 {
                     items.Add(item.GetString()!);
                 }
+                else if (item.ValueKind == JsonValueKind.Object
+                    && item.TryGetProperty("id", out var idValue)
+                    && idValue.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(idValue.GetString()))
+                {
+                    items.Add(idValue.GetString()!);
+                }
             }
         }
 
@@ -319,6 +336,13 @@ public sealed class ActivityPubClient : IActivityPubClient
     private static ActivityPubNote ParseNote(JsonDocument document)
     {
         var root = document.RootElement;
+        if (root.TryGetProperty("object", out var objectElement)
+            && objectElement.ValueKind == JsonValueKind.Object)
+        {
+            using var nestedDocument = JsonDocument.Parse(objectElement.GetRawText());
+            return ParseNote(nestedDocument);
+        }
+
         var attachments = new List<ActivityPubAttachment>();
 
         if (root.TryGetProperty("attachment", out var attachmentElement) && attachmentElement.ValueKind == JsonValueKind.Array)

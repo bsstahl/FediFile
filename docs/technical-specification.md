@@ -74,7 +74,7 @@ F:\
 ### 4.1 Mounting
 
 1. User chooses mount point such as `F:`.
-2. FediFile host starts WinFsp or Dokan dispatcher.
+2. FediFile host starts the WinFsp dispatcher for the read-only filesystem view.
 3. Dispatcher exposes the root directory and serves Win32 filesystem requests.
 4. Unmount must be graceful and flush pending writes.
 

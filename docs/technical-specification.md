@@ -18,6 +18,7 @@ The system is intentionally designed as a demonstration platform. It highlights 
 6. Provide both filesystem integration and Explorer-specific namespace integration.
 7. Stay modular enough to evolve from a demo into a more complete Windows integration sample.
 8. Implement all services in C# on .NET 10 with analyzers enabled and warnings treated as errors.
+9. Keep the core ActivityPub, store, and filesystem semantics portable so a future FUSE adapter can support Unix-like systems.
 
 ## 2.1 Platform and quality baseline
 
@@ -99,6 +100,13 @@ F:\
 1. Shell Namespace Extension exposes the same hierarchy without requiring a mounted drive.
 2. Notes and media provide `IStream`.
 3. Explorer can enumerate items, show metadata, and later support thumbnails and preview handlers.
+
+### 4.5 Future FUSE integration
+
+1. A future FUSE adapter must expose the shared filesystem semantics on supported Unix-like systems.
+2. The FUSE adapter must remain separate from Windows-specific WinFsp, Dokan, and Shell integration code.
+3. Platform-neutral ActivityPub and store components must be reusable by both Windows and FUSE hosts.
+4. FUSE support is a planned requirement and is not part of the initial Windows implementation milestone.
 
 ## 5. Constraints and semantic mismatches
 

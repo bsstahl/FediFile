@@ -1,8 +1,10 @@
 <Solution>
+  <Folder Name="/src/" />
   <Folder Name="/tst/">
     <Project Path="tst/FediFile.ActivityPub.Tests/FediFile.ActivityPub.Tests.csproj" />
     <Project Path="tst/FediFile.Host.Tests/FediFile.Host.Tests.csproj" />
     <Project Path="tst/FediFile.Store.Tests/FediFile.Store.Tests.csproj" />
+    <Project Path="tst/FediFile.WinFsp.Tests/FediFile.WinFsp.Tests.csproj" />
   </Folder>
   <Project Path="src/FediFile.ActivityPub/FediFile.ActivityPub.csproj" />
   <Project Path="src/FediFile.Host/FediFile.Host.csproj" />

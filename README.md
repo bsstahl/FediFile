@@ -29,10 +29,13 @@ dotnet build .\FediFile.slnx
 ```powershell
 dotnet run --project .\src\FediFile.Host -- list @barry@mastodon.social
 dotnet run --project .\src\FediFile.Host -- cat @barry@mastodon.social "\@barry@mastodon.social\Notes\note.html"
+dotnet run --project .\src\FediFile.Host -- mount F: @barry@mastodon.social
 ```
 
-The `list` command synchronizes an actor and lists its cached Notes directory. The `cat` command synchronizes an actor and writes a note's HTML content to standard output.
+The `list` command synchronizes an actor and lists its Following directory by default. Startup fetches the complete available Following collection, including all pagination pages, but does not fetch statuses or other collections. Following entries are actor directories. Opening any actor directory expands that actor's root folders on demand. Listing `Inbox`, `Outbox`, `Media`, or `Notes` then fetches only that folder's content. Pass an explicit path to list another collection, such as `\@barry@mastodon.social\Followers`, `\@barry@mastodon.social\Outbox`, or `\@barry@mastodon.social\Notes`. The `cat` command synchronizes an actor and writes a note's HTML content to standard output.
+
+The `mount` command synchronizes an actor and mounts the read-only view as a drive visible in Windows Explorer. WinFsp must be installed on Windows, and the process must remain running while the drive is in use. Press `Ctrl+C` to unmount it.
 
 ## Status
 
-This repository is a foundation, not a finished filesystem. The code intentionally focuses on architecture, contracts, and mapping strategy so a concrete WinFsp mount host and Explorer integration can be implemented on top.
+This repository is a foundation, not a finished filesystem. The current WinFsp mount is read-only; write operations, persistent caching, and Explorer shell registration remain future work. Relationship collections may be empty when a remote server does not expose them to anonymous clients.

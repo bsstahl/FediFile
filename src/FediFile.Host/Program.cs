@@ -4,10 +4,9 @@ using FediFile.Store;
 using FediFile.WinFsp;
 using Microsoft.Extensions.Logging;
 
-var command = args.Length > 0 ? args[0].ToUpperInvariant() : "MOUNT";
-var actorHandle = command is "LIST" or "CAT"
-    ? args.ElementAtOrDefault(1) ?? throw new ArgumentException("An actor handle is required.")
-    : args.ElementAtOrDefault(1) ?? "@demo@example.social";
+var options = HostCommandLine.Parse(args);
+var command = options.Command;
+var actorHandle = options.ActorHandle;
 
 using var loggerFactory = LoggerFactory.Create(builder =>
 {
@@ -41,7 +40,7 @@ var adapter = new WinFspAdapter(fileSystem);
 
 if (command is "LIST" or "CAT")
 {
-    var path = args.ElementAtOrDefault(2) ?? HostPath.GetDefaultNotesPath(actorHandle);
+    var path = options.Path ?? HostPath.GetDefaultFollowingPath(actorHandle);
 
     if (command == "LIST")
     {
@@ -63,15 +62,26 @@ if (command is "LIST" or "CAT")
     return;
 }
 
+using var mountHost = new WinFspMountHost(store);
+mountHost.Mount(options.MountPoint);
+
 #pragma warning disable CA1303
 Console.WriteLine(HostMessages.StarterHostInitialized);
-Console.WriteLine($"Requested command: {command}");
+Console.WriteLine($"Mounted FediFile at {mountHost.MountPoint}");
 Console.WriteLine($"Seed actor: {actorHandle}");
-Console.WriteLine(HostMessages.WinFspNextStep);
+Console.WriteLine(HostMessages.MountStopMessage);
 #pragma warning restore CA1303
+
+var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    shutdown.TrySetResult();
+};
+await shutdown.Task.ConfigureAwait(false);
 
 internal static class HostMessages
 {
     public const string StarterHostInitialized = "FediFile starter host initialized.";
-    public const string WinFspNextStep = "Next step: replace WinFspAdapter with a concrete WinFsp or Dokan mount host and wire shell registration.";
+    public const string MountStopMessage = "Press Ctrl+C to unmount and exit.";
 }

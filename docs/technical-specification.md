@@ -18,6 +18,7 @@ The system is intentionally designed as a demonstration platform. It highlights 
 6. Provide both filesystem integration and Explorer-specific namespace integration.
 7. Stay modular enough to evolve from a demo into a more complete Windows integration sample.
 8. Implement all services in C# on .NET 10 with analyzers enabled and warnings treated as errors.
+9. Keep the core ActivityPub, store, and filesystem semantics portable so a future FUSE adapter can support Unix-like systems.
 
 ## 2.1 Platform and quality baseline
 
@@ -73,18 +74,24 @@ F:\
 ### 4.1 Mounting
 
 1. User chooses mount point such as `F:`.
-2. FediFile host starts WinFsp or Dokan dispatcher.
+2. FediFile host starts the WinFsp dispatcher for the read-only filesystem view.
 3. Dispatcher exposes the root directory and serves Win32 filesystem requests.
 4. Unmount must be graceful and flush pending writes.
 
 ### 4.2 Read operations
 
 1. Opening an actor directory triggers cache lookup, then optional remote actor/collection refresh.
-2. Opening a Note file returns either:
+2. The initial actor listing should present the actor's Following collection.
+3. Following entries are represented as actor directories, and the complete available Following collection is fetched during startup by following pagination links.
+4. Statuses, Inbox, Outbox, Followers, and media are not fetched during startup; they are resolved on demand.
+5. Relationship collections that are unavailable or restricted must not prevent other public collections from being displayed.
+6. Opening any actor directory, including one discovered inside a collection, materializes that actor's root folders on demand.
+7. Opening a discovered actor's Followers or Following folder loads that actor's relationship collection on demand.
+8. Opening a Note file returns either:
    1. raw `application/activity+json`,
    2. normalized JSON,
    3. rendered HTML projection.
-3. Opening a MediaAttachment streams remote bytes via HTTP with local read-through caching.
+9. Opening a MediaAttachment streams remote bytes via HTTP with local read-through caching.
 
 ### 4.3 Write operations
 
@@ -99,6 +106,13 @@ F:\
 1. Shell Namespace Extension exposes the same hierarchy without requiring a mounted drive.
 2. Notes and media provide `IStream`.
 3. Explorer can enumerate items, show metadata, and later support thumbnails and preview handlers.
+
+### 4.5 Future FUSE integration
+
+1. A future FUSE adapter must expose the shared filesystem semantics on supported Unix-like systems.
+2. The FUSE adapter must remain separate from Windows-specific WinFsp, Dokan, and Shell integration code.
+3. Platform-neutral ActivityPub and store components must be reusable by both Windows and FUSE hosts.
+4. FUSE support is a planned requirement and is not part of the initial Windows implementation milestone.
 
 ## 5. Constraints and semantic mismatches
 

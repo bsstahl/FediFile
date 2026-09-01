@@ -1,5 +1,4 @@
 #pragma warning disable CA1707
-using System.Text;
 using FediFile.ActivityPub;
 using NSubstitute;
 using Xunit;
@@ -32,43 +31,76 @@ public sealed class FediStore_SynchronizeActorAsync_Should
             null,
             System.Text.Json.JsonDocument.Parse("{}"));
 
-    private static ActivityPubNote CreateNote() =>
-        new(
-            "https://example.social/notes/1",
-            "https://example.social/users/alice",
-            "A note",
-            "<p>Hello from the Fediverse.</p>",
-            "text/html",
-            DateTimeOffset.UtcNow,
-            [],
-            System.Text.Json.JsonDocument.Parse("{}"));
-
     [Fact]
-    public async Task ReturnCachedNoteContent_WhenActorIsSynchronized()
+    public async Task PopulateFollowing_WhenActorIsSynchronized()
     {
-        var note = CreateNote();
 #pragma warning disable CA2012
         _activityPubClient.GetActorAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(CreateActor()));
-        _activityPubClient.GetCollectionAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
+        _activityPubClient.GetCollectionAsync(Arg.Is<Uri>(uri => uri.AbsoluteUri.EndsWith("/following", StringComparison.Ordinal)), Arg.Any<CancellationToken>())
             .Returns(ValueTask.FromResult(new ActivityPubCollectionView(
-                "https://example.social/outbox",
-                "Outbox",
-                [note.Id],
+            "https://example.social/following",
+            "Following",
+                ["https://example.social/users/following"],
                 System.Text.Json.JsonDocument.Parse("{}"))));
-        _activityPubClient.GetNoteAsync(note.Id, Arg.Any<CancellationToken>())
-            .Returns(ValueTask.FromResult(note));
 #pragma warning restore CA2012
 
         await target.SynchronizeActorAsync("@alice@example.social", CancellationToken.None);
 
-        var entries = await target.ListDirectoryAsync(new FediPath(@"\@alice@example.social\Notes"), CancellationToken.None);
-        var content = await target.OpenReadAsync(new FediPath(@"\@alice@example.social\Notes\A note.html"), CancellationToken.None);
-        using var reader = new StreamReader(content.Stream, Encoding.UTF8);
+        var entries = await target.ListDirectoryAsync(new FediPath(@"\@alice@example.social\Following"), CancellationToken.None);
 
         Assert.Single(entries);
-        Assert.Equal("A note.html", entries[0].Name);
-        Assert.Equal("<p>Hello from the Fediverse.</p>", await reader.ReadToEndAsync());
+        Assert.Equal("following", entries[0].Name);
     }
+
+    [Fact]
+    public async Task PopulateFollowingOnly_WhenRelationshipCollectionsAreAvailable()
+    {
+        var actor = CreateActor();
+#pragma warning disable CA2012
+        _activityPubClient.GetActorAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult(actor));
+        _activityPubClient.GetCollectionAsync(Arg.Is<Uri>(uri => uri.AbsoluteUri.EndsWith("/following", StringComparison.Ordinal)), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult(CreateCollection("following", "https://example.social/users/following")));
+#pragma warning restore CA2012
+
+        await target.SynchronizeActorAsync("@alice@example.social", CancellationToken.None);
+
+        var following = await target.ListDirectoryAsync(new FediPath(@"\@alice@example.social\Following"), CancellationToken.None);
+        var followers = await target.ListDirectoryAsync(new FediPath(@"\@alice@example.social\Followers"), CancellationToken.None);
+
+        Assert.Equal("following", following.Single().Name);
+        Assert.True(following.Single().IsDirectory);
+        Assert.Empty(followers);
+    }
+
+    [Fact]
+    public async Task LoadFollowersOnDemand_WhenFollowersFolderIsListed()
+    {
+        var actor = CreateActor();
+#pragma warning disable CA2012
+        _activityPubClient.GetActorAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult(actor));
+        _activityPubClient.GetCollectionAsync(Arg.Is<Uri>(uri => uri.AbsoluteUri.EndsWith("/following", StringComparison.Ordinal)), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult(CreateCollection("following")));
+        _activityPubClient.GetCollectionAsync(Arg.Is<Uri>(uri => uri.AbsoluteUri.EndsWith("/followers", StringComparison.Ordinal)), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult(CreateCollection("followers", "https://example.social/users/follower")));
+#pragma warning restore CA2012
+
+        await target.SynchronizeActorAsync("@alice@example.social", CancellationToken.None);
+
+        var entries = await target.ListDirectoryAsync(new FediPath(@"\@alice@example.social\Followers"), CancellationToken.None);
+
+        Assert.Single(entries);
+        Assert.Equal("follower", entries[0].Name);
+        Assert.True(entries[0].IsDirectory);
+    }
+
+    private static ActivityPubCollectionView CreateCollection(string name, params string[] items) =>
+        new(
+            $"https://example.social/{name}",
+            name,
+            items,
+            System.Text.Json.JsonDocument.Parse("{}"));
 }
 #pragma warning restore CA1707

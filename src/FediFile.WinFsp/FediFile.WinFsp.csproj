@@ -1,8 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\FediFile.Store\FediFile.Store.csproj" />
     <ProjectReference Include="..\FediFile.ActivityPub\FediFile.ActivityPub.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="winfsp.net" Version="2.2.26215" />
   </ItemGroup>
 
 </Project>

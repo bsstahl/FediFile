@@ -18,6 +18,12 @@ public sealed class HttpTrafficLoggingHandler(ILogger logger) : DelegatingHandle
             new EventId(1001, nameof(ResponseReceived)),
             "HTTP response received {StatusCode} for {Method} {Uri} in {ElapsedMilliseconds} ms");
 
+    private static readonly Action<ILogger, int, string, string, double, Exception?> UnsuccessfulResponseReceived =
+        LoggerMessage.Define<int, string, string, double>(
+            LogLevel.Warning,
+            new EventId(1005, nameof(UnsuccessfulResponseReceived)),
+            "HTTP response received {StatusCode} for {Method} {Uri} in {ElapsedMilliseconds} ms");
+
     private static readonly Action<ILogger, string, string, double, Exception?> RequestFailed =
         LoggerMessage.Define<string, string, double>(
             LogLevel.Error,
@@ -74,13 +80,14 @@ public sealed class HttpTrafficLoggingHandler(ILogger logger) : DelegatingHandle
             }
 
             var elapsedMilliseconds = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
-            ResponseReceived(
-                _logger,
-                (int)response.StatusCode,
-                request.Method.Method,
-                requestUri,
-                elapsedMilliseconds,
-                null);
+                var logResponse = response.IsSuccessStatusCode ? ResponseReceived : UnsuccessfulResponseReceived;
+                logResponse(
+                    _logger,
+                    (int)response.StatusCode,
+                    request.Method.Method,
+                    requestUri,
+                    elapsedMilliseconds,
+                    null);
             return response;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

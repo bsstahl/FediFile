@@ -1,5 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\FediFile.WinFsp\FediFile.WinFsp.csproj" />
     <ProjectReference Include="..\FediFile.Shell\FediFile.Shell.csproj" />

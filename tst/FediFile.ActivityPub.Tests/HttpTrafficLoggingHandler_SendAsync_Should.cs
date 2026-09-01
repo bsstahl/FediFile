@@ -9,6 +9,24 @@ namespace FediFile.ActivityPub.Tests;
 public sealed class HttpTrafficLoggingHandler_SendAsync_Should
 {
     [Fact]
+    public async Task LogWarningForUnsuccessfulResponse_WhenInboxIsUnavailable()
+    {
+        var logger = new RecordingLogger();
+        using var innerHandler = new StubHttpMessageHandler(statusCode: HttpStatusCode.NotFound);
+        using var handler = new HttpTrafficLoggingHandler(logger)
+        {
+            InnerHandler = innerHandler
+        };
+        using var client = new HttpClient(handler);
+
+        using var response = await client.GetAsync(new Uri("https://example.social/inbox"));
+
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.Warning
+            && entry.Message.Contains("HTTP response received", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LogRequestAndResponsePayloadsWithoutHeaders_WhenTraceIsEnabled()
     {
         var logger = new RecordingLogger();
@@ -70,11 +88,13 @@ public sealed class HttpTrafficLoggingHandler_SendAsync_Should
         Assert.DoesNotContain(logger.Messages, message => message.Contains("acct%3Aalice%40example.social", StringComparison.Ordinal));
     }
 
-    private sealed class StubHttpMessageHandler(string responsePayload = "") : HttpMessageHandler
+    private sealed class StubHttpMessageHandler(
+        string responsePayload = "",
+        HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            CancellationToken cancellationToken) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            CancellationToken cancellationToken) => Task.FromResult(new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(responsePayload)
             });
@@ -90,6 +110,8 @@ public sealed class HttpTrafficLoggingHandler_SendAsync_Should
 
     private sealed class RecordingLogger : ILogger
     {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
         public List<string> Messages { get; } = [];
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
@@ -103,6 +125,7 @@ public sealed class HttpTrafficLoggingHandler_SendAsync_Should
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
+            Entries.Add((logLevel, formatter(state, exception)));
             Messages.Add(formatter(state, exception));
         }
     }

@@ -81,11 +81,17 @@ F:\
 ### 4.2 Read operations
 
 1. Opening an actor directory triggers cache lookup, then optional remote actor/collection refresh.
-2. Opening a Note file returns either:
+2. The initial actor listing should present the actor's Following collection.
+3. Following entries are represented as actor directories, and the complete available Following collection is fetched during startup by following pagination links.
+4. Statuses, Inbox, Outbox, Followers, and media are not fetched during startup; they are resolved on demand.
+5. Relationship collections that are unavailable or restricted must not prevent other public collections from being displayed.
+6. Opening any actor directory, including one discovered inside a collection, materializes that actor's root folders on demand.
+7. Opening a discovered actor's Followers or Following folder loads that actor's relationship collection on demand.
+8. Opening a Note file returns either:
    1. raw `application/activity+json`,
    2. normalized JSON,
    3. rendered HTML projection.
-3. Opening a MediaAttachment streams remote bytes via HTTP with local read-through caching.
+9. Opening a MediaAttachment streams remote bytes via HTTP with local read-through caching.
 
 ### 4.3 Write operations
 

@@ -36,6 +36,44 @@ public sealed class ActivityPubClient_GetCollectionAsync_Should_ReturnFirstPageI
         Assert.Equal(["https://example.social/notes/1"], collection.OrderedItems);
     }
 
+        [Fact]
+        public async Task ReturnItemsFromAllPages_WhenCollectionIsPaginated()
+        {
+                using var handler = new JsonHttpMessageHandler(
+                        """
+                        {
+                            "id": "https://example.social/users/alice/following",
+                            "type": "OrderedCollection",
+                            "first": "https://example.social/users/alice/following?page=1"
+                        }
+                        """,
+                        """
+                        {
+                            "id": "https://example.social/users/alice/following?page=1",
+                            "type": "OrderedCollectionPage",
+                            "orderedItems": ["https://example.social/users/a"],
+                            "next": "https://example.social/users/alice/following?page=2"
+                        }
+                        """,
+                        """
+                        {
+                            "id": "https://example.social/users/alice/following?page=2",
+                            "type": "OrderedCollectionPage",
+                            "orderedItems": ["https://example.social/users/b"]
+                        }
+                        """);
+                using var httpClient = new HttpClient(handler);
+                var target = new ActivityPubClient(httpClient);
+
+                var collection = await target.GetCollectionAsync(
+                        new Uri("https://example.social/users/alice/following"),
+                        CancellationToken.None);
+
+                Assert.Equal(
+                        ["https://example.social/users/a", "https://example.social/users/b"],
+                        collection.OrderedItems);
+        }
+
     private sealed class JsonHttpMessageHandler(params string[] responses) : HttpMessageHandler
     {
         private int _responseIndex;

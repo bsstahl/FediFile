@@ -125,6 +125,8 @@ public sealed class FediStore : IFediStore
 
     private readonly IActivityPubClient _activityPubClient;
     private readonly IFediCache _cache;
+    private readonly ConcurrentDictionary<string, (Uri Inbox, Uri Outbox, Uri Followers, Uri Following)> _actorCollections = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _loadedCollections = new(StringComparer.OrdinalIgnoreCase);
 
     public FediStore(IActivityPubClient activityPubClient, IFediCache cache)
     {
@@ -156,6 +158,37 @@ public sealed class FediStore : IFediStore
         if (!node.IsDirectory)
         {
             throw new IOException($"Node {path} is not a directory.");
+        }
+
+        if (node.Kind == FediNodeKind.Actor && !_actorCollections.ContainsKey(node.Id))
+        {
+            await ExpandActorAsync(node, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (node.Kind == FediNodeKind.Collection
+            && node.ParentId is not null
+            && _actorCollections.TryGetValue(node.ParentId, out var actorCollections)
+            && _loadedCollections.TryAdd(path.FullPath, 0))
+        {
+            var actorPath = new FediPath(GetParentPath(path.FullPath));
+            if (string.Equals(node.Name, "Followers", StringComparison.OrdinalIgnoreCase))
+            {
+                await SynchronizeActorCollectionAsync(actorCollections.Followers, node.Name, actorPath, node.ActorHandle ?? string.Empty, cancellationToken).ConfigureAwait(false);
+            }
+            else if (string.Equals(node.Name, "Following", StringComparison.OrdinalIgnoreCase))
+            {
+                await SynchronizeActorCollectionAsync(actorCollections.Following, node.Name, actorPath, node.ActorHandle ?? string.Empty, cancellationToken).ConfigureAwait(false);
+            }
+            else if (string.Equals(node.Name, "Inbox", StringComparison.OrdinalIgnoreCase))
+            {
+                await SynchronizeNoteCollectionAsync(actorCollections.Inbox, node.Name, actorPath, node.ActorHandle ?? string.Empty, cancellationToken).ConfigureAwait(false);
+            }
+            else if (string.Equals(node.Name, "Outbox", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(node.Name, "Notes", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(node.Name, "Media", StringComparison.OrdinalIgnoreCase))
+            {
+                await SynchronizeNoteCollectionAsync(actorCollections.Outbox, node.Name, actorPath, node.ActorHandle ?? string.Empty, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return await _cache.GetChildrenAsync(path, cancellationToken).ConfigureAwait(false);
@@ -260,6 +293,8 @@ public sealed class FediStore : IFediStore
                 actor.Handle),
             cancellationToken).ConfigureAwait(false);
 
+        _actorCollections[actor.Id] = (actor.Inbox, actor.Outbox, actor.Followers, actor.Following);
+
         foreach (var collectionName in DefaultCollections)
         {
             var collectionPath = new FediPath($@"{actorPath.FullPath}\{collectionName}");
@@ -278,32 +313,135 @@ public sealed class FediStore : IFediStore
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var outbox = await _activityPubClient.GetCollectionAsync(actor.Outbox, cancellationToken).ConfigureAwait(false);
-        foreach (var objectId in outbox.OrderedItems.Take(25))
-        {
-            var note = await _activityPubClient.GetNoteAsync(objectId, cancellationToken).ConfigureAwait(false);
-            var notePath = new FediPath($@"{actorPath.FullPath}\Notes\{BuildSafeFileName(note)}.html");
-            await _cache.UpsertAsync(MapNoteNode(notePath, note, actor.Handle), cancellationToken).ConfigureAwait(false);
+        await SynchronizeActorCollectionAsync(actor.Following, "Following", actorPath, actor.Handle, cancellationToken).ConfigureAwait(false);
+    }
 
-            foreach (var attachment in note.Attachments)
+    private async ValueTask SynchronizeActorCollectionAsync(
+        Uri collectionUri,
+        string collectionName,
+        FediPath actorPath,
+        string actorHandle,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var collection = await _activityPubClient.GetCollectionAsync(collectionUri, cancellationToken).ConfigureAwait(false);
+            if (collection is null)
             {
-                var attachmentName = string.IsNullOrWhiteSpace(attachment.Name) ? Path.GetFileName(attachment.Url.LocalPath) : attachment.Name;
-                var attachmentPath = new FediPath($@"{actorPath.FullPath}\Media\{attachmentName}");
+                return;
+            }
+
+            foreach (var objectId in collection.OrderedItems)
+            {
+                var actorName = BuildActorDirectoryName(objectId);
+                var actorItemPath = new FediPath($@"{actorPath.FullPath}\{collectionName}\{actorName}");
                 await _cache.UpsertAsync(
                     new FediNode(
-                        attachment.Id,
-                        attachmentName,
-                        FediNodeKind.Attachment,
-                        attachmentPath,
-                        attachment.Size,
-                        note.UpdatedAt ?? DateTimeOffset.UtcNow,
-                        attachment.MediaType,
-                        false,
-                        note.Id,
-                        actor.Handle),
+                        objectId,
+                        actorName,
+                        FediNodeKind.Actor,
+                        actorItemPath,
+                        null,
+                        DateTimeOffset.UtcNow,
+                        null,
+                        true,
+                        actorPath.FullPath,
+                        actorHandle),
                     cancellationToken).ConfigureAwait(false);
             }
         }
+        catch (HttpRequestException)
+        {
+            // Relationship collections may be private or unavailable to anonymous clients.
+        }
+    }
+
+    private async ValueTask SynchronizeNoteCollectionAsync(
+        Uri collectionUri,
+        string collectionName,
+        FediPath actorPath,
+        string actorHandle,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var collection = await _activityPubClient.GetCollectionAsync(collectionUri, cancellationToken).ConfigureAwait(false);
+            if (collection is null)
+            {
+                return;
+            }
+
+            foreach (var objectId in collection.OrderedItems)
+            {
+                var note = await _activityPubClient.GetNoteAsync(objectId, cancellationToken).ConfigureAwait(false);
+                if (!string.Equals(collectionName, "Media", StringComparison.OrdinalIgnoreCase))
+                {
+                    var notePath = new FediPath($@"{actorPath.FullPath}\{collectionName}\{BuildSafeFileName(note)}.html");
+                    await _cache.UpsertAsync(MapNoteNode(notePath, note, actorHandle), cancellationToken).ConfigureAwait(false);
+                }
+
+                foreach (var attachment in note.Attachments)
+                {
+                    var attachmentName = string.IsNullOrWhiteSpace(attachment.Name)
+                        ? Path.GetFileName(attachment.Url.LocalPath)
+                        : attachment.Name;
+                    var attachmentPath = new FediPath($@"{actorPath.FullPath}\Media\{attachmentName}");
+                    await _cache.UpsertAsync(
+                        new FediNode(
+                            attachment.Id,
+                            attachmentName,
+                            FediNodeKind.Attachment,
+                            attachmentPath,
+                            attachment.Size,
+                            note.UpdatedAt ?? DateTimeOffset.UtcNow,
+                            attachment.MediaType,
+                            false,
+                            note.Id,
+                            actorHandle),
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (HttpRequestException)
+        {
+            // Content collections may be private or unavailable to anonymous clients.
+        }
+    }
+
+    private async ValueTask ExpandActorAsync(FediNode actorNode, CancellationToken cancellationToken)
+    {
+        if (_actorCollections.ContainsKey(actorNode.Id))
+        {
+            return;
+        }
+
+        var actor = await _activityPubClient.GetActorByIdAsync(actorNode.Id, cancellationToken).ConfigureAwait(false);
+        _actorCollections[actor.Id] = (actor.Inbox, actor.Outbox, actor.Followers, actor.Following);
+
+        foreach (var collectionName in DefaultCollections)
+        {
+            var collectionPath = new FediPath($@"{actorNode.Path.FullPath}\{collectionName}");
+            await _cache.UpsertAsync(
+                new FediNode(
+                    $"{actor.Id}#{collectionName}",
+                    collectionName,
+                    FediNodeKind.Collection,
+                    collectionPath,
+                    null,
+                    DateTimeOffset.UtcNow,
+                    null,
+                    true,
+                    actor.Id,
+                    actor.Handle),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static string GetParentPath(string path)
+    {
+        var trimmed = path.TrimEnd('\\');
+        var lastSlash = trimmed.LastIndexOf('\\');
+        return lastSlash <= 0 ? "\\" : trimmed[..lastSlash];
     }
 
     private async ValueTask<FediContent> OpenNoteAsync(FediNode node, CancellationToken cancellationToken)
@@ -352,5 +490,19 @@ public sealed class FediStore : IFediStore
         }
 
         return string.IsNullOrWhiteSpace(candidate) ? $"note-{Guid.NewGuid():N}" : candidate;
+    }
+
+    private static string BuildActorDirectoryName(string actorId)
+    {
+        if (Uri.TryCreate(actorId, UriKind.Absolute, out var actorUri))
+        {
+            var segment = actorUri.Segments.LastOrDefault(item => !string.IsNullOrWhiteSpace(item.Trim('/')))?.Trim('/');
+            if (!string.IsNullOrWhiteSpace(segment))
+            {
+                return Uri.UnescapeDataString(segment);
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(actorId) ? "actor" : actorId;
     }
 }

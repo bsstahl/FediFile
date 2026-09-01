@@ -40,7 +40,7 @@ var adapter = new WinFspAdapter(fileSystem);
 
 if (command is "LIST" or "CAT")
 {
-    var path = options.Path ?? HostPath.GetDefaultNotesPath(actorHandle);
+    var path = options.Path ?? HostPath.GetDefaultFollowingPath(actorHandle);
 
     if (command == "LIST")
     {

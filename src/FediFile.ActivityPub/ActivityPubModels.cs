@@ -27,7 +27,8 @@ public sealed record ActivityPubCollectionView(
     string Id,
     string Name,
     IReadOnlyList<string> OrderedItems,
-    JsonDocument RawDocument);
+    JsonDocument RawDocument,
+    Uri? NextPage = null);
 
 public sealed record ActivityPubNote(
     string Id,
@@ -66,6 +67,7 @@ public interface IActivityPubClient
 {
     ValueTask<WebFingerResult> ResolveActorAsync(string handle, CancellationToken cancellationToken);
     ValueTask<ActivityPubActor> GetActorAsync(string handle, CancellationToken cancellationToken);
+    ValueTask<ActivityPubActor> GetActorByIdAsync(string actorId, CancellationToken cancellationToken);
     ValueTask<ActivityPubCollectionView> GetCollectionAsync(Uri collectionUri, CancellationToken cancellationToken);
     ValueTask<ActivityPubNote> GetNoteAsync(string objectId, CancellationToken cancellationToken);
     ValueTask<Stream> OpenMediaReadAsync(Uri mediaUri, CancellationToken cancellationToken);
@@ -201,6 +203,15 @@ public sealed class ActivityPubClient : IActivityPubClient
         return ParseActor(handle, document);
     }
 
+    public async ValueTask<ActivityPubActor> GetActorByIdAsync(string actorId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, actorId);
+        using var document = await SendForJsonAsync(request, cancellationToken).ConfigureAwait(false);
+        return ParseActor(GetActorHandle(actorId, document), document);
+    }
+
     public async ValueTask<ActivityPubCollectionView> GetCollectionAsync(Uri collectionUri, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(collectionUri);
@@ -208,16 +219,29 @@ public sealed class ActivityPubClient : IActivityPubClient
         using var request = new HttpRequestMessage(HttpMethod.Get, collectionUri);
         using var document = await SendForJsonAsync(request, cancellationToken).ConfigureAwait(false);
         var collection = ParseCollection(document);
-        if (collection.OrderedItems.Count > 0
-            || !document.RootElement.TryGetProperty("first", out var firstValue)
-            || !Uri.TryCreate(firstValue.GetString(), UriKind.Absolute, out var firstPageUri))
+        if (!document.RootElement.TryGetProperty("first", out var firstValue)
+            || !Uri.TryCreate(firstValue.GetString(), UriKind.Absolute, out var pageUri))
         {
             return collection;
         }
 
-        using var firstPageRequest = new HttpRequestMessage(HttpMethod.Get, firstPageUri);
-        using var firstPageDocument = await SendForJsonAsync(firstPageRequest, cancellationToken).ConfigureAwait(false);
-        return ParseCollection(firstPageDocument);
+        var items = new List<string>(collection.OrderedItems);
+        var visitedPages = new HashSet<Uri>();
+        while (visitedPages.Add(pageUri))
+        {
+            using var pageRequest = new HttpRequestMessage(HttpMethod.Get, pageUri);
+            using var pageDocument = await SendForJsonAsync(pageRequest, cancellationToken).ConfigureAwait(false);
+            var page = ParseCollection(pageDocument);
+            items.AddRange(page.OrderedItems);
+            if (page.NextPage is null)
+            {
+                break;
+            }
+
+            pageUri = page.NextPage;
+        }
+
+        return collection with { OrderedItems = items };
     }
 
     public async ValueTask<ActivityPubNote> GetNoteAsync(string objectId, CancellationToken cancellationToken)
@@ -303,6 +327,20 @@ public sealed class ActivityPubClient : IActivityPubClient
             JsonDocument.Parse(document.RootElement.GetRawText()));
     }
 
+    private static string GetActorHandle(string actorId, JsonDocument document)
+    {
+        var root = document.RootElement;
+        var username = root.TryGetProperty("preferredUsername", out var usernameValue)
+            ? usernameValue.GetString()
+            : null;
+        if (string.IsNullOrWhiteSpace(username) || !Uri.TryCreate(actorId, UriKind.Absolute, out var actorUri))
+        {
+            return actorId;
+        }
+
+        return $"@{username}@{actorUri.Host}";
+    }
+
     private static ActivityPubCollectionView ParseCollection(JsonDocument document)
     {
         var root = document.RootElement;
@@ -326,11 +364,17 @@ public sealed class ActivityPubClient : IActivityPubClient
             }
         }
 
+        var nextPage = root.TryGetProperty("next", out var nextValue)
+            && Uri.TryCreate(nextValue.GetString(), UriKind.Absolute, out var nextUri)
+            ? nextUri
+            : null;
+
         return new ActivityPubCollectionView(
             root.GetProperty("id").GetString() ?? Guid.NewGuid().ToString("N"),
             root.TryGetProperty("name", out var name) ? name.GetString() ?? "collection" : "collection",
             items,
-            JsonDocument.Parse(root.GetRawText()));
+            JsonDocument.Parse(root.GetRawText()),
+            nextPage);
     }
 
     private static ActivityPubNote ParseNote(JsonDocument document)
